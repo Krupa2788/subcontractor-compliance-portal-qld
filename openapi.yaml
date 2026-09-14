@@ -1,0 +1,384 @@
+openapi: 3.0.3
+info:
+  title: Subcontractor Compliance Portal API
+  description: >
+    Contract-first API for tracking Queensland (Australia) construction
+    subcontractor compliance — QBCC licences, insurances, and White Cards —
+    with expiry-aware status tracking.
+  version: 0.1.0
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+
+tags:
+  - name: System
+  - name: Subcontractors
+  - name: ComplianceDocuments
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      tags: [System]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /subcontractors:
+    get:
+      summary: List subcontractors
+      operationId: listSubcontractors
+      tags: [Subcontractors]
+      responses:
+        "200":
+          description: A list of subcontractors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Subcontractor"
+    post:
+      summary: Create a subcontractor
+      operationId: createSubcontractor
+      tags: [Subcontractors]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubcontractorInput"
+      responses:
+        "201":
+          description: Subcontractor created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subcontractor"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /subcontractors/{subcontractorId}:
+    parameters:
+      - $ref: "#/components/parameters/SubcontractorId"
+    get:
+      summary: Get a subcontractor
+      operationId: getSubcontractor
+      tags: [Subcontractors]
+      responses:
+        "200":
+          description: The subcontractor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subcontractor"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: Update a subcontractor
+      operationId: updateSubcontractor
+      tags: [Subcontractors]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubcontractorInput"
+      responses:
+        "200":
+          description: Subcontractor updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subcontractor"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: Delete a subcontractor
+      operationId: deleteSubcontractor
+      tags: [Subcontractors]
+      responses:
+        "204":
+          description: Subcontractor deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /subcontractors/{subcontractorId}/documents:
+    parameters:
+      - $ref: "#/components/parameters/SubcontractorId"
+    get:
+      summary: List compliance documents for a subcontractor
+      operationId: listComplianceDocuments
+      tags: [ComplianceDocuments]
+      responses:
+        "200":
+          description: A list of compliance documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ComplianceDocument"
+    post:
+      summary: Add a compliance document for a subcontractor
+      operationId: createComplianceDocument
+      tags: [ComplianceDocuments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ComplianceDocumentInput"
+      responses:
+        "201":
+          description: Compliance document created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplianceDocument"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /documents/{documentId}:
+    parameters:
+      - name: documentId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Get a compliance document
+      operationId: getComplianceDocument
+      tags: [ComplianceDocuments]
+      responses:
+        "200":
+          description: The compliance document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplianceDocument"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: Update a compliance document
+      operationId: updateComplianceDocument
+      tags: [ComplianceDocuments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ComplianceDocumentInput"
+      responses:
+        "200":
+          description: Compliance document updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplianceDocument"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: Delete a compliance document
+      operationId: deleteComplianceDocument
+      tags: [ComplianceDocuments]
+      responses:
+        "204":
+          description: Compliance document deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  parameters:
+    SubcontractorId:
+      name: subcontractorId
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BadRequest:
+      description: Invalid request payload
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    Trade:
+      type: string
+      description: Maps to QBCC licence classes.
+      enum:
+        - BUILDER
+        - ELECTRICAL
+        - PLUMBING
+        - CARPENTRY
+        - PAINTING
+        - ROOFING
+        - TILING
+        - PLASTERING
+        - CONCRETING
+        - GENERAL
+
+    ComplianceStatus:
+      type: string
+      enum:
+        - VALID
+        - EXPIRING_SOON
+        - EXPIRED
+        - MISSING_DOCS
+
+    DocumentStatus:
+      type: string
+      enum:
+        - VALID
+        - EXPIRING_SOON
+        - EXPIRED
+
+    DocType:
+      type: string
+      description: >
+        QLD construction compliance document types. WHITE_CARD never expires
+        once issued, unlike the others.
+      enum:
+        - QBCC_LICENCE
+        - PUBLIC_LIABILITY_INSURANCE
+        - WORKERS_COMPENSATION_INSURANCE
+        - WHITE_CARD
+        - PROFESSIONAL_INDEMNITY_INSURANCE
+
+    SubcontractorInput:
+      type: object
+      required:
+        - companyName
+        - abn
+        - trade
+        - contactName
+        - contactEmail
+        - contactPhone
+      properties:
+        companyName:
+          type: string
+        abn:
+          type: string
+          description: Australian Business Number, 11 digits.
+          pattern: '^\d{11}$'
+          example: "12345678901"
+        trade:
+          $ref: "#/components/schemas/Trade"
+        contactName:
+          type: string
+        contactEmail:
+          type: string
+          format: email
+        contactPhone:
+          type: string
+
+    Subcontractor:
+      allOf:
+        - type: object
+          required: [id, complianceStatus, createdAt, updatedAt]
+          properties:
+            id:
+              type: string
+              readOnly: true
+            complianceStatus:
+              allOf:
+                - $ref: "#/components/schemas/ComplianceStatus"
+              readOnly: true
+            createdAt:
+              type: string
+              format: date-time
+              readOnly: true
+            updatedAt:
+              type: string
+              format: date-time
+              readOnly: true
+        - $ref: "#/components/schemas/SubcontractorInput"
+
+    ComplianceDocumentInput:
+      type: object
+      required:
+        - docType
+        - referenceNumber
+        - issuer
+        - issueDate
+      properties:
+        docType:
+          $ref: "#/components/schemas/DocType"
+        referenceNumber:
+          type: string
+          description: Licence number, policy number, or card number.
+        issuer:
+          type: string
+          description: e.g. QBCC, WorkCover Queensland, or an insurer name.
+        coverAmount:
+          type: number
+          nullable: true
+          description: Insurance cover amount in AUD, where applicable.
+        issueDate:
+          type: string
+          format: date
+        expirationDate:
+          type: string
+          format: date
+          nullable: true
+          description: Null for WHITE_CARD, which never expires.
+        notes:
+          type: string
+          nullable: true
+
+    ComplianceDocument:
+      allOf:
+        - type: object
+          required: [id, subcontractorId, status, createdAt, updatedAt]
+          properties:
+            id:
+              type: string
+              readOnly: true
+            subcontractorId:
+              type: string
+              readOnly: true
+            status:
+              allOf:
+                - $ref: "#/components/schemas/DocumentStatus"
+              readOnly: true
+            createdAt:
+              type: string
+              format: date-time
+              readOnly: true
+            updatedAt:
+              type: string
+              format: date-time
+              readOnly: true
+        - $ref: "#/components/schemas/ComplianceDocumentInput"

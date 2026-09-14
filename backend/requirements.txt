@@ -1,0 +1,3 @@
+# boto3 ships built into the Lambda Python runtime already — listed here
+# only so local tooling (editor autocomplete, tests) can resolve it.
+boto3==1.35.*
