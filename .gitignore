@@ -13,3 +13,6 @@ dist/
 # Env
 .env
 .env.local
+
+# Working notes, not for the repo yet
+DECISIONS.md

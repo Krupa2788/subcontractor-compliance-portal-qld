@@ -1,7 +1,10 @@
 from aws_cdk import (
+    Duration,
     Stack,
     aws_apigateway as apigateway,
     aws_dynamodb as dynamodb,
+    aws_events as events,
+    aws_events_targets as targets,
     aws_lambda as _lambda,
 )
 from constructs import Construct
@@ -45,6 +48,12 @@ class CompliancePortalStack(Stack):
         common_lambda_kwargs = dict(
             runtime=_lambda.Runtime.PYTHON_3_13,
             code=_lambda.Code.from_asset("../backend/src"),
+            # The 3s default is not enough for a cold start that also has to
+            # initialise boto3 and make its first DynamoDB call. Lambda scales
+            # CPU with memory, so 512MB is both faster to start and cheaper
+            # per request than 128MB despite the higher per-ms rate.
+            timeout=Duration.seconds(15),
+            memory_size=512,
         )
 
         health_fn = _lambda.Function(
@@ -54,29 +63,59 @@ class CompliancePortalStack(Stack):
             **common_lambda_kwargs,
         )
 
+        both_tables_env = {
+            "SUBCONTRACTORS_TABLE_NAME": subcontractors_table.table_name,
+            "COMPLIANCE_DOCUMENTS_TABLE_NAME": compliance_documents_table.table_name,
+        }
+
         subcontractors_fn = _lambda.Function(
             self,
             "SubcontractorsFunction",
             handler="handlers.subcontractors.handler",
-            environment={
-                "SUBCONTRACTORS_TABLE_NAME": subcontractors_table.table_name,
-            },
+            environment=both_tables_env,
             **common_lambda_kwargs,
         )
         subcontractors_table.grant_read_write_data(subcontractors_fn)
+        # Needed to cascade-delete a subcontractor's documents: DynamoDB has
+        # no foreign keys, so nothing else would clean up the orphans.
+        compliance_documents_table.grant_read_write_data(subcontractors_fn)
 
         compliance_documents_fn = _lambda.Function(
             self,
             "ComplianceDocumentsFunction",
             handler="handlers.compliance_documents.handler",
-            environment={
-                "COMPLIANCE_DOCUMENTS_TABLE_NAME": compliance_documents_table.table_name,
-                "SUBCONTRACTORS_TABLE_NAME": subcontractors_table.table_name,
-            },
+            environment=both_tables_env,
             **common_lambda_kwargs,
         )
         compliance_documents_table.grant_read_write_data(compliance_documents_fn)
-        subcontractors_table.grant_read_data(compliance_documents_fn)
+        # Write (not just read) because every document change re-derives and
+        # persists the subcontractor's denormalized complianceStatus.
+        subcontractors_table.grant_read_write_data(compliance_documents_fn)
+
+        # Compliance status is stored on the subcontractor record, so it would
+        # drift out of date as certificates lapse with no write to trigger a
+        # recalculation. This runs daily to re-derive every status.
+        recompute_status_fn = _lambda.Function(
+            self,
+            "RecomputeStatusFunction",
+            handler="handlers.recompute_status.handler",
+            environment=both_tables_env,
+            # Longer than the API functions: this one walks every
+            # subcontractor rather than serving a single request.
+            **{**common_lambda_kwargs, "timeout": Duration.minutes(5)},
+        )
+        subcontractors_table.grant_read_write_data(recompute_status_fn)
+        compliance_documents_table.grant_read_data(recompute_status_fn)
+
+        events.Rule(
+            self,
+            "DailyStatusRecompute",
+            # EventBridge cron is always UTC. 14:00 UTC is midnight in
+            # Brisbane (UTC+10, no daylight saving), so statuses roll over
+            # at the start of the local business day.
+            schedule=events.Schedule.cron(hour="14", minute="0"),
+            targets=[targets.LambdaFunction(recompute_status_fn)],
+        )
 
         # API Gateway REST API, wired to match openapi.yaml's paths.
         api = apigateway.RestApi(
