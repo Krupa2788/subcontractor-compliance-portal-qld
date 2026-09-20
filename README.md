@@ -41,8 +41,11 @@ type, then the **worst** across the required types:
 ## Architecture
 
 ```
+                 Cognito
+                    │ ID token
+                    v
 React SPA  ──>  API Gateway  ──>  Lambda (Python)  ──>  DynamoDB
-                                        │
+                (authorizer)            │
                      EventBridge (daily) ┘
 ```
 
@@ -55,6 +58,31 @@ React SPA  ──>  API Gateway  ──>  Lambda (Python)  ──>  DynamoDB
   already ships in the Lambda runtime.
 - **Least-privilege IAM**: each function is granted only the tables it uses.
 - **CDK (Python)** defines all of it; `cdk deploy` is the only deployment step.
+
+### Authentication and roles
+
+A Cognito authorizer validates the JWT at API Gateway, so an unauthenticated
+request is rejected at the edge and never reaches a Lambda. Every endpoint
+requires a token except `/health`, which stays open as a liveness check.
+
+Two Cognito groups carry different authority:
+
+| | Compliance officer | Subcontractor |
+| --- | --- | --- |
+| See every subcontractor | Yes | No — only their own |
+| Onboard / delete a subcontractor | Yes | No |
+| Edit a subcontractor's details | Any | Their own |
+| Manage compliance documents | Any | Their own |
+
+A subcontractor login is bound to its record by a `custom:subcontractorId`
+claim carried **in the token**, so a request arrives already scoped and the
+Lambda needs no extra lookup to know what the caller owns.
+
+Authorization is enforced server-side; the UI hides what a role cannot do, but
+that is a courtesy, not the control. Documents are addressed by their own id,
+where the owner is not in the URL — those are loaded first and authorized
+against the record's subcontractor, so one tenant cannot reach another's
+document by guessing an id.
 
 ### Denormalized compliance status
 
@@ -97,8 +125,29 @@ prints the API URL on completion.
 ```bash
 cd frontend
 npm install
-cp .env.example .env     # then set VITE_API_BASE_URL to the deployed API URL
+cp .env.example .env     # fill in the API URL and the Cognito ids
 npm run dev
+```
+
+`cdk deploy` prints `UserPoolId` and `UserPoolClientId`; the API URL is the
+`ComplianceApiEndpoint` output.
+
+### Creating the first user
+
+Self sign-up is disabled, so accounts are issued via the CLI. A compliance
+officer needs a group; a subcontractor also needs binding to their record.
+
+```bash
+POOL=<UserPoolId from cdk deploy>
+
+# Compliance officer
+aws cognito-idp admin-create-user --user-pool-id $POOL   --username officer@example.com   --user-attributes Name=email,Value=officer@example.com Name=email_verified,Value=true   --message-action SUPPRESS
+aws cognito-idp admin-set-user-password --user-pool-id $POOL   --username officer@example.com --password '<a strong password>' --permanent
+aws cognito-idp admin-add-user-to-group --user-pool-id $POOL   --username officer@example.com --group-name ComplianceOfficer
+
+# Subcontractor, bound to the record they may manage
+aws cognito-idp admin-create-user --user-pool-id $POOL   --username subbie@example.com   --user-attributes Name=email,Value=subbie@example.com Name=email_verified,Value=true                     Name=custom:subcontractorId,Value=<subcontractor id>   --message-action SUPPRESS
+aws cognito-idp admin-add-user-to-group --user-pool-id $POOL   --username subbie@example.com --group-name Subcontractor
 ```
 
 ### Tests
@@ -110,6 +159,11 @@ cd infra   && .venv/Scripts/python -m pytest   # CDK synthesises the expected re
 
 ## Not included
 
-Authentication is deliberately out of scope — the API is open. Adding Cognito
-with an API Gateway authorizer would be the first change before this went
-anywhere real.
+- **Document files.** The app stores a certificate's metadata — reference
+  number, issuer, dates — not the PDF itself. Real use would keep the evidence
+  in S3.
+- **Notifications.** The daily job computes status but tells nobody; the
+  obvious next step is it chasing a subcontractor whose cover is lapsing.
+- **A verification step.** Nobody confirms a certificate is genuine; the app
+  trusts what was entered.
+- **CI/CD.** Deployment is a local `cdk deploy`.

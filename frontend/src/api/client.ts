@@ -1,3 +1,4 @@
+import { getIdToken } from '../auth/cognito'
 import type {
   ComplianceDocument,
   ComplianceDocumentInput,
@@ -22,9 +23,17 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // Fetched per request rather than held in a variable: the SDK silently
+  // refreshes an expired token here, so a long-lived tab keeps working.
+  const token = await getIdToken()
+
   const response = await fetch(`${BASE_URL}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: token } : {}),
+      ...init?.headers,
+    },
   })
 
   if (!response.ok) {

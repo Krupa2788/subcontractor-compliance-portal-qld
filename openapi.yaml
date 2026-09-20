@@ -16,12 +16,18 @@ tags:
   - name: Subcontractors
   - name: ComplianceDocuments
 
+# Every operation requires a Cognito ID token except /health, which is left
+# open as an unauthenticated liveness check.
+security:
+  - cognitoIdToken: []
+
 paths:
   /health:
     get:
       summary: Health check
       operationId: getHealth
       tags: [System]
+      security: []   # deliberately public
       responses:
         "200":
           description: Service is healthy
@@ -63,6 +69,8 @@ paths:
                 $ref: "#/components/schemas/Subcontractor"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /subcontractors/{subcontractorId}:
     parameters:
@@ -78,6 +86,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Subcontractor"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     put:
@@ -97,6 +107,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Subcontractor"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
@@ -106,6 +118,8 @@ paths:
       responses:
         "204":
           description: Subcontractor deleted
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -125,6 +139,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ComplianceDocument"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     post:
       summary: Add a compliance document for a subcontractor
       operationId: createComplianceDocument
@@ -144,6 +160,8 @@ paths:
                 $ref: "#/components/schemas/ComplianceDocument"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -165,6 +183,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ComplianceDocument"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     put:
@@ -184,6 +204,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ComplianceDocument"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
@@ -193,10 +215,24 @@ paths:
       responses:
         "204":
           description: Compliance document deleted
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 
 components:
+  securitySchemes:
+    cognitoIdToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Cognito ID token, validated by an API Gateway authorizer before the
+        request reaches a Lambda. Two groups carry different authority:
+        ComplianceOfficer may act on every subcontractor, while Subcontractor
+        may act only on the record named by their custom:subcontractorId
+        claim. A request outside that scope is refused with 403.
+
   parameters:
     SubcontractorId:
       name: subcontractorId
@@ -214,6 +250,12 @@ components:
             $ref: "#/components/schemas/Error"
     BadRequest:
       description: Invalid request payload
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Authenticated, but not permitted for this resource
       content:
         application/json:
           schema:

@@ -8,6 +8,7 @@ import {
 } from '../api/hooks'
 import type { ComplianceDocument, DocType } from '../api/types'
 import { DOC_TYPE_LABELS, REQUIRED_DOC_TYPES, TRADE_LABELS } from '../api/types'
+import { useAuth } from '../auth/AuthProvider'
 import { StatusBadge } from '../components/StatusBadge'
 import {
   ErrorNotice,
@@ -21,6 +22,10 @@ import { formatAbn, formatCurrency, formatDate } from '../lib/format'
 export function SubcontractorDetail() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
+  const { session } = useAuth()
+  // Deleting a subcontractor is an officer action. The API enforces this;
+  // hiding the control keeps the UI honest about what it will accept.
+  const isOfficer = session?.role === 'ComplianceOfficer'
   const subcontractor = useSubcontractor(id)
   const documents = useDocuments(id)
   const deleteDocument = useDeleteDocument(id)
@@ -47,14 +52,16 @@ export function SubcontractorDetail() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link
-          to="/"
-          className="text-sm text-slate-500 underline-offset-2 hover:underline"
-        >
-          ← All subcontractors
-        </Link>
-      </div>
+      {isOfficer && (
+        <div>
+          <Link
+            to="/"
+            className="text-sm text-slate-500 underline-offset-2 hover:underline"
+          >
+            ← All subcontractors
+          </Link>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -76,15 +83,17 @@ export function SubcontractorDetail() {
           >
             Edit
           </Link>
-          <button
-            type="button"
-            onClick={handleDeleteSubcontractor}
-            disabled={deleteSubcontractor.isPending}
-            aria-label={'Delete ' + s.companyName}
-            className={dangerButtonClass}
-          >
-            Delete
-          </button>
+          {isOfficer && (
+            <button
+              type="button"
+              onClick={handleDeleteSubcontractor}
+              disabled={deleteSubcontractor.isPending}
+              aria-label={'Delete ' + s.companyName}
+              className={dangerButtonClass}
+            >
+              Delete
+            </button>
+          )}
         </div>
       </div>
 

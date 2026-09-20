@@ -1,6 +1,12 @@
 import logging
 from datetime import date
 
+from auth import (
+    AuthorizationError,
+    caller_from_event,
+    require_access_to,
+    require_officer,
+)
 from http_helpers import error_response, json_response, parse_body, path_param
 from models import (
     ValidationError,
@@ -21,17 +27,21 @@ def handler(event, context):
     subcontractor_id = path_param(event, "subcontractorId")
 
     try:
+        caller = caller_from_event(event)
+
         if method == "GET" and subcontractor_id is None:
-            return _list()
+            return _list(caller)
         if method == "POST" and subcontractor_id is None:
-            return _create(event)
+            return _create(event, caller)
         if method == "GET":
-            return _get(subcontractor_id)
+            return _get(subcontractor_id, caller)
         if method == "PUT":
-            return _update(event, subcontractor_id)
+            return _update(event, subcontractor_id, caller)
         if method == "DELETE":
-            return _delete(subcontractor_id)
+            return _delete(subcontractor_id, caller)
         return error_response(405, f"Method {method} not allowed")
+    except AuthorizationError as exc:
+        return error_response(403, str(exc))
     except ValidationError as exc:
         return error_response(400, str(exc))
     except ValueError as exc:
@@ -43,25 +53,39 @@ def handler(event, context):
         return error_response(500, "Internal server error")
 
 
-def _list():
-    return json_response(200, subcontractors.list())
+def _list(caller):
+    if caller.is_officer:
+        return json_response(200, subcontractors.list())
+
+    # A subcontractor gets a list of exactly themselves, so the client can use
+    # one code path for both roles.
+    if caller.subcontractor_id:
+        own = subcontractors.get(caller.subcontractor_id)
+        return json_response(200, [own] if own else [])
+
+    return json_response(200, [])
 
 
-def _get(subcontractor_id):
+def _get(subcontractor_id, caller):
+    require_access_to(caller, subcontractor_id)
     item = subcontractors.get(subcontractor_id)
     if item is None:
         return error_response(404, "Subcontractor not found")
     return json_response(200, item)
 
 
-def _create(event):
+def _create(event, caller):
+    # Only officers onboard subcontractors; a subcontractor cannot create
+    # further records for themselves or anyone else.
+    require_officer(caller)
     attributes = validate_subcontractor_input(parse_body(event))
     # A brand new subcontractor has no documents on file yet.
     status = derive_compliance_status([], date.today())
     return json_response(201, subcontractors.create(attributes, status))
 
 
-def _update(event, subcontractor_id):
+def _update(event, subcontractor_id, caller):
+    require_access_to(caller, subcontractor_id)
     existing = subcontractors.get(subcontractor_id)
     if existing is None:
         return error_response(404, "Subcontractor not found")
@@ -70,7 +94,8 @@ def _update(event, subcontractor_id):
     return json_response(200, subcontractors.update(existing, attributes))
 
 
-def _delete(subcontractor_id):
+def _delete(subcontractor_id, caller):
+    require_officer(caller)
     if subcontractors.get(subcontractor_id) is None:
         return error_response(404, "Subcontractor not found")
 

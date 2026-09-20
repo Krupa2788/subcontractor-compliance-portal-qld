@@ -1,6 +1,7 @@
 import logging
 from datetime import date
 
+from auth import AuthorizationError, caller_from_event, require_access_to
 from http_helpers import error_response, json_response, parse_body, path_param
 from models import (
     ValidationError,
@@ -24,19 +25,23 @@ def handler(event, context):
     document_id = path_param(event, "documentId")
 
     try:
+        caller = caller_from_event(event)
+
         if subcontractor_id is not None:
             if method == "GET":
-                return _list_for_subcontractor(subcontractor_id)
+                return _list_for_subcontractor(subcontractor_id, caller)
             if method == "POST":
-                return _create(event, subcontractor_id)
+                return _create(event, subcontractor_id, caller)
         if document_id is not None:
             if method == "GET":
-                return _get(document_id)
+                return _get(document_id, caller)
             if method == "PUT":
-                return _update(event, document_id)
+                return _update(event, document_id, caller)
             if method == "DELETE":
-                return _delete(document_id)
+                return _delete(document_id, caller)
         return error_response(405, f"Method {method} not allowed")
+    except AuthorizationError as exc:
+        return error_response(403, str(exc))
     except ValidationError as exc:
         return error_response(400, str(exc))
     except ValueError as exc:
@@ -69,21 +74,33 @@ def _refresh_subcontractor_status(subcontractor_id):
     subcontractors.set_compliance_status(subcontractor_id, status.value)
 
 
-def _list_for_subcontractor(subcontractor_id):
+def _load_owned_document(document_id, caller):
+    """Documents are addressed by their own id, so the owner is not in the URL.
+    Load first, then authorize against the record's subcontractor."""
+    document = documents.get(document_id)
+    if document is None:
+        return None
+    require_access_to(caller, document["subcontractorId"])
+    return document
+
+
+def _list_for_subcontractor(subcontractor_id, caller):
+    require_access_to(caller, subcontractor_id)
     if subcontractors.get(subcontractor_id) is None:
         return error_response(404, "Subcontractor not found")
     items = documents.list_by_subcontractor(subcontractor_id)
     return json_response(200, [_with_status(item) for item in items])
 
 
-def _get(document_id):
-    document = documents.get(document_id)
+def _get(document_id, caller):
+    document = _load_owned_document(document_id, caller)
     if document is None:
         return error_response(404, "Compliance document not found")
     return json_response(200, _with_status(document))
 
 
-def _create(event, subcontractor_id):
+def _create(event, subcontractor_id, caller):
+    require_access_to(caller, subcontractor_id)
     if subcontractors.get(subcontractor_id) is None:
         return error_response(404, "Subcontractor not found")
 
@@ -93,8 +110,8 @@ def _create(event, subcontractor_id):
     return json_response(201, _with_status(created))
 
 
-def _update(event, document_id):
-    existing = documents.get(document_id)
+def _update(event, document_id, caller):
+    existing = _load_owned_document(document_id, caller)
     if existing is None:
         return error_response(404, "Compliance document not found")
 
@@ -104,8 +121,8 @@ def _update(event, document_id):
     return json_response(200, _with_status(updated))
 
 
-def _delete(document_id):
-    existing = documents.get(document_id)
+def _delete(document_id, caller):
+    existing = _load_owned_document(document_id, caller)
     if existing is None:
         return error_response(404, "Compliance document not found")
 
