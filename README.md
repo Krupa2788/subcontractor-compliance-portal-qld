@@ -169,6 +169,9 @@ Then set its output as a repository variable named `AWS_DEPLOY_ROLE_ARN`
 
 ## Layout
 
+See [docs/workflow.md](docs/workflow.md) for the development loop, the
+deployment pipeline, and how a request moves through the system.
+
 ```
 backend/     Lambda handlers, domain logic, DynamoDB repository (Python)
 infra/       CDK app defining every AWS resource (Python)
