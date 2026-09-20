@@ -16,7 +16,15 @@ class CicdStack(Stack):
     take the ability to deploy it with it.
     """
 
-    def __init__(self, scope: Construct, construct_id: str, repository: str, **kwargs):
+    def __init__(
+        self,
+        scope: Construct,
+        construct_id: str,
+        repository: str,
+        owner_id: str | None = None,
+        repo_id: str | None = None,
+        **kwargs,
+    ):
         super().__init__(scope, construct_id, **kwargs)
 
         provider = iam.OpenIdConnectProvider(
@@ -25,6 +33,20 @@ class CicdStack(Stack):
             url=GITHUB_OIDC_URL,
             client_ids=["sts.amazonaws.com"],
         )
+
+        # GitHub issues the subject claim in two shapes, and which one you get
+        # is not under your control:
+        #   repo:<owner>/<name>:<context>
+        #   repo:<owner>@<ownerId>/<name>@<repoId>:<context>
+        # The second is the "immutable" form — it embeds numeric ids so that
+        # renaming a repository cannot silently point an existing trust policy
+        # at somebody else's repo. The widely copied policy snippet only
+        # matches the first, which fails with a bare AccessDenied and no
+        # explanation of why. Accept both, each fully anchored.
+        subjects = [f"repo:{repository}:*"]
+        if owner_id and repo_id:
+            owner, name = repository.split("/")
+            subjects.append(f"repo:{owner}@{owner_id}/{name}@{repo_id}:*")
 
         deploy_role = iam.Role(
             self,
@@ -39,7 +61,7 @@ class CicdStack(Stack):
                     # Scoped to this repository. Without this condition any
                     # GitHub repository in the world could assume the role.
                     "StringLike": {
-                        "token.actions.githubusercontent.com:sub": f"repo:{repository}:*",
+                        "token.actions.githubusercontent.com:sub": subjects,
                     },
                 },
             ),

@@ -80,9 +80,24 @@ receives temporary credentials in exchange. Nothing long-lived is stored.
 
 Two properties keep that safe:
 
-1. The IAM role's trust policy requires
-   `token.actions.githubusercontent.com:sub` to match `repo:<owner>/<repo>:*`.
+1. The IAM role's trust policy pins
+   `token.actions.githubusercontent.com:sub` to this repository.
    **Without that condition, any GitHub repository could assume the role.**
+
+   GitHub issues that claim in two shapes, and which one arrives is not under
+   your control:
+
+   ```
+   repo:<owner>/<name>:<context>
+   repo:<owner>@<ownerId>/<name>@<repoId>:<context>
+   ```
+
+   The second is the *immutable* form: it embeds numeric ids so renaming a
+   repository cannot silently point an existing trust policy at somebody
+   else's. The widely copied policy snippet matches only the first and fails
+   with a bare `AccessDenied` that says nothing about why. The policy here
+   accepts both, each fully anchored. Get the ids from
+   `/repos/<owner>/<name>` — `id` and `owner.id`.
 2. The role grants no deployment permissions of its own. It may only
    `sts:AssumeRole` into CDK's bootstrap roles, so compromising it yields
    nothing directly.

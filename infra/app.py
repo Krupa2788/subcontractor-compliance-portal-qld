@@ -20,6 +20,9 @@ CicdStack(
     "CompliancePortalCicdStack",
     repository=app.node.try_get_context("githubRepository")
     or "Krupa2788/subcontractor-compliance-portal-qld",
+    # From the GitHub API: /repos/<owner>/<name> gives id and owner.id.
+    owner_id=app.node.try_get_context("githubOwnerId") or "22041518",
+    repo_id=app.node.try_get_context("githubRepoId") or "1369738196",
     env=env,
 )
 
