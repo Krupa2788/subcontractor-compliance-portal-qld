@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../auth/context'
 import { ErrorNotice, Field, inputClass, primaryButtonClass } from '../components/ui'
 
 export function Login() {

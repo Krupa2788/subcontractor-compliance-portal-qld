@@ -6,14 +6,11 @@ that lapses overnight triggers no write, so without this job the record would
 claim VALID indefinitely. EventBridge runs this daily to close that gap.
 """
 
-import logging
 from datetime import date
 
 from models import derive_compliance_status
+from observability import logger
 from repository import ComplianceDocumentRepository, SubcontractorRepository
-
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
 
 subcontractors = SubcontractorRepository()
 documents = ComplianceDocumentRepository()
@@ -34,11 +31,18 @@ def handler(event, context):
             subcontractors.set_compliance_status(subcontractor_id, status.value)
             updated += 1
             logger.info(
-                "Compliance status changed for %s: %s -> %s",
-                subcontractor_id,
-                subcontractor.get("complianceStatus"),
-                status.value,
+                "compliance status changed",
+                extra={
+                    "context": {
+                        "subcontractorId": subcontractor_id,
+                        "from": subcontractor.get("complianceStatus"),
+                        "to": status.value,
+                    }
+                },
             )
 
-    logger.info("Recompute complete: %s checked, %s updated", checked, updated)
+    logger.info(
+        "recompute complete",
+        extra={"context": {"checked": checked, "updated": updated}},
+    )
     return {"checked": checked, "updated": updated}

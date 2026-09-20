@@ -8,7 +8,7 @@ import {
 } from '../api/hooks'
 import type { ComplianceDocument, DocType } from '../api/types'
 import { DOC_TYPE_LABELS, REQUIRED_DOC_TYPES, TRADE_LABELS } from '../api/types'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../auth/context'
 import { StatusBadge } from '../components/StatusBadge'
 import {
   ErrorNotice,

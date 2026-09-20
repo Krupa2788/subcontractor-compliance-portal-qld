@@ -1,6 +1,6 @@
 import { Link, Navigate, Route, Routes } from 'react-router-dom'
 
-import { useAuth } from './auth/AuthProvider'
+import { useAuth } from './auth/context'
 import { Spinner, secondaryButtonClass } from './components/ui'
 import { DocumentForm } from './pages/DocumentForm'
 import { Login } from './pages/Login'

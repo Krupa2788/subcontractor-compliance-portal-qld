@@ -4,8 +4,33 @@ Contract-first serverless app for tracking Queensland construction subcontractor
 compliance — QBCC licences, public liability and workers' compensation insurance,
 and White Cards — with expiry-aware status tracking.
 
-Built with Python on AWS (Lambda, DynamoDB, API Gateway, CDK) and a React +
-TypeScript frontend.
+Built with Python on AWS (Lambda, DynamoDB, API Gateway, Cognito, CDK) and a
+React + TypeScript frontend.
+
+## Screenshots
+
+A compliance officer sees every subcontractor, filterable by status:
+
+![Compliance officer dashboard](docs/screenshots/officer-dashboard.png)
+
+Each subcontractor's documents, with expiry-derived status per document. Note
+the White Card, which does not expire:
+
+![Subcontractor detail](docs/screenshots/subcontractor-detail.png)
+
+A subcontractor signs into the same app and sees only their own record — no
+list, no delete, and the API refuses anything outside their scope:
+
+![Subcontractor's own view](docs/screenshots/subcontractor-view.png)
+
+<details>
+<summary>Sign-in and mobile</summary>
+
+![Sign in](docs/screenshots/login.png)
+
+![Mobile](docs/screenshots/mobile.png)
+
+</details>
 
 ## The domain
 
@@ -98,6 +123,50 @@ therefore recomputed on two triggers:
 2. **On schedule** — an EventBridge rule runs a Lambda daily at 14:00 UTC
    (midnight Brisbane) to catch purely time-driven transitions.
 
+### Observability
+
+Handlers emit one structured JSON line per request, so CloudWatch Logs
+Insights can filter on real fields rather than grepping prose:
+
+```json
+{"level":"INFO","message":"request","requestId":"cf248699","method":"GET",
+ "route":"/subcontractors/{subcontractorId}","userId":"c9dec4b8",
+ "userEmail":"roofing@example.com","userGroups":["Subcontractor"],
+ "durationMs":0.1,"status":403}
+```
+
+The route is logged as its template rather than the concrete path, so queries
+group by endpoint instead of scattering across record ids. Each line records
+who made the request — in a compliance system, knowing *who was refused* is
+part of the audit trail, not just debugging.
+
+```
+fields @timestamp, userEmail, route, status
+| filter status = 403
+| sort @timestamp desc
+```
+
+## Continuous integration and deployment
+
+GitHub Actions runs backend tests, infrastructure tests, and a frontend
+lint/typecheck/build on every push and pull request. A push to `master`
+additionally deploys, gated on those tests passing.
+
+Deployment authenticates by **OIDC role assumption** — no AWS access keys are
+stored in GitHub. The workflow trades its short-lived GitHub identity token
+for temporary AWS credentials, and the IAM role's trust policy is scoped to
+this repository, so no other repo can assume it. The role itself holds no
+deployment permissions; it may only step into CDK's own bootstrap roles.
+
+The role is created by a second stack, deployed once by hand:
+
+```bash
+cd infra && cdk deploy CompliancePortalCicdStack
+```
+
+Then set its output as a repository variable named `AWS_DEPLOY_ROLE_ARN`
+(Settings → Secrets and variables → Actions → Variables).
+
 ## Layout
 
 ```
@@ -105,6 +174,7 @@ backend/     Lambda handlers, domain logic, DynamoDB repository (Python)
 infra/       CDK app defining every AWS resource (Python)
 frontend/    React + TypeScript + Vite SPA
 openapi.yaml The API contract, written before the code
+.github/     CI and deployment workflows
 ```
 
 ## Running it
@@ -166,4 +236,4 @@ cd infra   && .venv/Scripts/python -m pytest   # CDK synthesises the expected re
   obvious next step is it chasing a subcontractor whose cover is lapsing.
 - **A verification step.** Nobody confirms a certificate is genuine; the app
   trusts what was entered.
-- **CI/CD.** Deployment is a local `cdk deploy`.
+- **Alerting.** Structured logs are queryable but nothing pages anyone.

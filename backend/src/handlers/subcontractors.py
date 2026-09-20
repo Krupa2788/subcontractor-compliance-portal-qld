@@ -1,4 +1,3 @@
-import logging
 from datetime import date
 
 from auth import (
@@ -13,15 +12,14 @@ from models import (
     derive_compliance_status,
     validate_subcontractor_input,
 )
+from observability import logger, observed
 from repository import ComplianceDocumentRepository, SubcontractorRepository
-
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
 
 subcontractors = SubcontractorRepository()
 documents = ComplianceDocumentRepository()
 
 
+@observed
 def handler(event, context):
     method = event.get("httpMethod")
     subcontractor_id = path_param(event, "subcontractorId")

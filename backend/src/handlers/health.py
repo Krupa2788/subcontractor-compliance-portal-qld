@@ -1,6 +1,9 @@
 import json
 
+from observability import observed
 
+
+@observed
 def handler(event, context):
     return {
         "statusCode": 200,
